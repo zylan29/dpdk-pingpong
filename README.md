@@ -8,6 +8,7 @@ The client records such ping-pong round trip time.
 ## Build
 
 1. Modify the MAC and IP addresses
+
 Since the ARP protocol is not implemented, the MAC and IP addresses of the client and server are hardcoded.
 Modify the follwing variables.
 ```c
@@ -23,6 +24,7 @@ static uint32_t server_ip_addr = IPv4(172, 16, 166, 132);
 ```
 
 2. Build
+
 ```shell
 export RTE_SDK=/path/to/dpdk-19.05/
 export RTE_TARGET=build

@@ -161,7 +161,11 @@ signal_handler(int signum)
 static void
 pingpong_usage(const char *prgname)
 {
-    printf("%s [EAL options] -- -p PORTID\n -p PORTID: port to configure\n -n PACKETS: number of packets\n -s SERVER MODE: enable server mode\n", prgname);
+    printf("%s [EAL options] --"
+           "\t-p PORTID: port to configure\n"
+           "\t\t\t\t\t-n PACKETS: number of packets\n"
+           "\t\t\t\t\t-s: enable server mode\n",
+           prgname);
 }
 
 /* Parse the argument given in the command line of the application */

@@ -61,3 +61,8 @@ average rtt: 427 us
 =================================
 ```
 Note that this test is run on virtual machines, ignore the numbers.
+
+## Issues
+
+1. The 1st ping-pong round is very slow.
+2. Only support directly connectted client and server NICs.

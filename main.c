@@ -462,6 +462,8 @@ int main(int argc, char **argv)
     ret = rte_eal_init(argc, argv);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Invalid EAL arguments\n");
+    argc -= ret;
+    argv += ret;
 
     /* init log */
     RTE_LOGTYPE_PINGPONG = rte_log_register(APP);

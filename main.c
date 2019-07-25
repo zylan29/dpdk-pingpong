@@ -282,7 +282,7 @@ ping_main_loop(void)
 {
     unsigned lcore_id;
     uint64_t ping_tsc, pong_tsc, diff_tsc, rtt_us;
-    unsigned nb_rx, nb_tx;
+    unsigned i, nb_rx, nb_tx;
     const uint64_t tsc_hz = rte_get_tsc_hz();
     uint64_t pkt_idx = 0;
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
@@ -292,6 +292,7 @@ ping_main_loop(void)
     struct ipv4_hdr *ip_hdr;
     uint16_t eth_type;
     int l2_len;
+    bool received_pong = false;
 
     lcore_id = rte_lcore_id();
 
@@ -307,51 +308,58 @@ ping_main_loop(void)
         ping_tsc = rte_rdtsc();
         /* do ping */
         nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
+        received_pong = false;
+
         if (nb_tx)
             port_statistics.tx += nb_tx;
 
         /* wait for pong */
-        while (!force_quit)
+        while (!received_pong && !force_quit)
         {
             nb_rx = rte_eth_rx_burst(portid, 0, pkts_burst, MAX_PKT_BURST);
             pong_tsc = rte_rdtsc();
             if (nb_rx)
             {
-                /* TODO: mybe we should deal with multiple received packets */
                 /* only 1 packet expected */
                 if (nb_rx > 1)
                     rte_log(RTE_LOG_WARNING, RTE_LOGTYPE_PINGPONG, "%u packets received, 1 expected.\n", nb_rx);
 
-                m = pkts_burst[0];
+                for (i = 0; i < nb_rx; i++)
+                {
+                    m = pkts_burst[i];
 
-                eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
-                eth_type = rte_cpu_to_be_16(eth_hdr->ether_type);
-                l2_len = sizeof(struct ether_hdr);
-                if (eth_type == ETHER_TYPE_VLAN)
-                {
-                    vlan_hdr = (struct vlan_hdr *)((char *)eth_hdr + sizeof(struct ether_hdr));
-                    l2_len += sizeof(struct vlan_hdr);
-                    eth_type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
-                }
-                if (eth_type == ETHER_TYPE_IPv4)
-                {
-                    ip_hdr = (struct ipv4_hdr *)((char *)eth_hdr + l2_len);
-                    /* compare mac & ip, confirm it is a pong packet */
-                    if (is_same_ether_addr(&eth_hdr->d_addr, &client_ether_addr) && reverse_ip_addr(ip_hdr->dst_addr) == client_ip_addr)
+                    eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
+                    eth_type = rte_cpu_to_be_16(eth_hdr->ether_type);
+                    l2_len = sizeof(struct ether_hdr);
+                    if (eth_type == ETHER_TYPE_VLAN)
                     {
-                        diff_tsc = pong_tsc - ping_tsc;
-                        rtt_us = diff_tsc * US_PER_S / tsc_hz;
-                        port_statistics.rtt[port_statistics.rx] = rtt_us;
+                        vlan_hdr = (struct vlan_hdr *)((char *)eth_hdr + sizeof(struct ether_hdr));
+                        l2_len += sizeof(struct vlan_hdr);
+                        eth_type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
+                    }
+                    if (eth_type == ETHER_TYPE_IPv4)
+                    {
+                        ip_hdr = (struct ipv4_hdr *)((char *)eth_hdr + l2_len);
+                        /* compare mac & ip, confirm it is a pong packet */
+                        if (is_same_ether_addr(&eth_hdr->d_addr, &client_ether_addr) &&
+                            reverse_ip_addr(ip_hdr->dst_addr) == client_ip_addr)
+                        {
+                            diff_tsc = pong_tsc - ping_tsc;
+                            rtt_us = diff_tsc * US_PER_S / tsc_hz;
+                            port_statistics.rtt[port_statistics.rx] = rtt_us;
 
-                        ether_addr_copy(&client_ether_addr, &eth_hdr->s_addr);
-                        ether_addr_copy(&server_ether_addr, &eth_hdr->d_addr);
+                            ether_addr_copy(&client_ether_addr, &eth_hdr->s_addr);
+                            ether_addr_copy(&server_ether_addr, &eth_hdr->d_addr);
 
-                        ip_hdr->src_addr = rte_cpu_to_be_32(client_ip_addr);
-                        ip_hdr->dst_addr = rte_cpu_to_be_32(server_ip_addr);
+                            ip_hdr->src_addr = rte_cpu_to_be_32(client_ip_addr);
+                            ip_hdr->dst_addr = rte_cpu_to_be_32(server_ip_addr);
 
-                        port_statistics.rx += 1;
+                            received_pong = true;
 
-                        break;
+                            port_statistics.rx += 1;
+
+                            break;
+                        }
                     }
                 }
             }
@@ -366,7 +374,7 @@ static void
 pong_main_loop(void)
 {
     unsigned lcore_id;
-    unsigned nb_rx, nb_tx;
+    unsigned i, nb_rx, nb_tx;
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
     struct rte_mbuf *m = NULL;
     struct ether_hdr *eth_hdr;
@@ -386,39 +394,39 @@ pong_main_loop(void)
         nb_rx = rte_eth_rx_burst(portid, 0, pkts_burst, MAX_PKT_BURST);
         if (nb_rx)
         {
-            /* TODO: mybe we should deal with multiple received packets */
-            /* only 1 packet expected */
-            if (nb_rx > 1)
-                rte_log(RTE_LOG_WARNING, RTE_LOGTYPE_PINGPONG, "%u packets received, 1 expected.\n", nb_rx);
-
-            m = pkts_burst[0];
-
-            eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
-            eth_type = rte_cpu_to_be_16(eth_hdr->ether_type);
-            l2_len = sizeof(struct ether_hdr);
-            if (eth_type == ETHER_TYPE_VLAN)
+            for (i = 0; i < nb_rx; i++)
             {
-                vlan_hdr = (struct vlan_hdr *)((char *)eth_hdr + sizeof(struct ether_hdr));
-                l2_len += sizeof(struct vlan_hdr);
-                eth_type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
-            }
-            if (eth_type == ETHER_TYPE_IPv4)
-            {
-                ip_hdr = (struct ipv4_hdr *)((char *)eth_hdr + l2_len);
-                /* compare mac & ip, confirm it is a ping packet */
-                if (is_same_ether_addr(&eth_hdr->d_addr, &server_ether_addr) && (reverse_ip_addr(ip_hdr->dst_addr) == server_ip_addr))
+
+                m = pkts_burst[i];
+
+                eth_hdr = rte_pktmbuf_mtod(m, struct ether_hdr *);
+                eth_type = rte_cpu_to_be_16(eth_hdr->ether_type);
+                l2_len = sizeof(struct ether_hdr);
+                if (eth_type == ETHER_TYPE_VLAN)
                 {
-                    port_statistics.rx += 1;
-                    /* do pong */
-                    ether_addr_copy(&server_ether_addr, &eth_hdr->s_addr);
-                    ether_addr_copy(&client_ether_addr, &eth_hdr->d_addr);
+                    vlan_hdr = (struct vlan_hdr *)((char *)eth_hdr + sizeof(struct ether_hdr));
+                    l2_len += sizeof(struct vlan_hdr);
+                    eth_type = rte_be_to_cpu_16(vlan_hdr->eth_proto);
+                }
+                if (eth_type == ETHER_TYPE_IPv4)
+                {
+                    ip_hdr = (struct ipv4_hdr *)((char *)eth_hdr + l2_len);
+                    /* compare mac & ip, confirm it is a ping packet */
+                    if (is_same_ether_addr(&eth_hdr->d_addr, &server_ether_addr) &&
+                        (reverse_ip_addr(ip_hdr->dst_addr) == server_ip_addr))
+                    {
+                        port_statistics.rx += 1;
+                        /* do pong */
+                        ether_addr_copy(&server_ether_addr, &eth_hdr->s_addr);
+                        ether_addr_copy(&client_ether_addr, &eth_hdr->d_addr);
 
-                    ip_hdr->src_addr = rte_cpu_to_be_32(server_ip_addr);
-                    ip_hdr->dst_addr = rte_cpu_to_be_32(client_ip_addr);
+                        ip_hdr->src_addr = rte_cpu_to_be_32(server_ip_addr);
+                        ip_hdr->dst_addr = rte_cpu_to_be_32(client_ip_addr);
 
-                    nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
-                    if (nb_tx)
-                        port_statistics.tx += nb_tx;
+                        nb_tx = rte_eth_tx_burst(portid, 0, &m, 1);
+                        if (nb_tx)
+                            port_statistics.tx += nb_tx;
+                    }
                 }
             }
         }

@@ -5,6 +5,60 @@ A simple program to evaluate raw DPDK latency.
 The client sends a packet to server as a `ping`, then the server returns it back to client as a `pong`. 
 The client records such ping-pong round trip time.
 
+`Note` that the following steps have been evaluated on 2 Ubuntu 18.04 virtual machines (KVM) with DPDK 19.05. 
+
+## Prepare
+
+The following operations are tested on Ubuntu 18.04.4 with DPDK 19.11.1.
+
+### Setup DPDK
+
+```shell
+sudo apt-get install make gcc libnuma-dev python pkgconf
+make config T=x86_64-native-linuxapp-gcc
+make
+
+echo "export RTE_SDK=/root/dpdk-18.05" >> ~/.profile
+echo "export RTE_TARGET=build" >> ~/.profile
+. ~/.profile
+
+```
+
+### Setup huge memory pages
+
+1. Enable huge memory page by default.
+
+``` shell
+vim /etc/default/grub
+
+# Append "default_hugepagesz=1GB hugepagesz=1G hugepages=8" to the end of line GRUB_CMDLINE_LINUX_DEFAULT.
+
+update-grub
+```
+
+2. Mount huge tlb by default.
+
+```shell
+vim /etc/fstab
+
+# Append "nodev /mnt/huge hugetlbfs defaults 0 0" to the end of file.
+```
+
+### Install user space NIC driver
+```shell
+modprobe uio
+cd $RTE_SDK/build/kmod
+insmod igb_uio.ko
+```
+
+### Bind NIC to userspace driver
+
+```shell
+cd $RTE_SDK/usertools
+./dpdk-devbind.py -s
+./dpdk-devbind.py -b igb_uio $YOUR_NIC
+```
+
 ## Build
 
 1. Modify the MAC and IP addresses
@@ -41,13 +95,15 @@ The valid parameters are:
 
 2. On the server side
 ```shell
-sudo ./build/pingpong -- -p 0 -s
+sudo ./build/pingpong -l 1,2 -- -p 0 -s
 ```
 
 3. On the client side
 ```shell
-sudo ./build/pingpong -- -p 0 -n 200
+sudo ./build/pingpong -l 1,2 -- -p 0 -n 200
 ```
+
+`Note` that `exactly` 2 lcores are needed.
 
 The output shoud be like this
 ```

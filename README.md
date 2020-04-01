@@ -14,7 +14,7 @@ The following operations are tested on Ubuntu 18.04.4 with DPDK 19.11.1.
 ### Setup DPDK
 
 ```shell
-sudo apt-get install make gcc libnuma-dev python pkgconf
+sudo apt-get install make gcc libnuma-dev pkgconf python
 make config T=x86_64-native-linuxapp-gcc
 make
 
@@ -103,7 +103,7 @@ sudo ./build/pingpong -l 1,2 -- -p 0 -s
 sudo ./build/pingpong -l 1,2 -- -p 0 -n 200
 ```
 
-`Note` that `exactly` 2 lcores are needed.
+`Note` that >= 2 lcores are needed.
 
 The output shoud be like this
 ```

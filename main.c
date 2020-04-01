@@ -457,7 +457,8 @@ int main(int argc, char **argv)
     int ret;
     uint16_t nb_ports;
     unsigned int nb_mbufs;
-    unsigned lcore_id;
+    unsigned int nb_lcores;
+    unsigned int lcore_id;
 
     /* init EAL */
     ret = rte_eal_init(argc, argv);
@@ -471,6 +472,10 @@ int main(int argc, char **argv)
     ret = rte_log_set_level(RTE_LOGTYPE_PINGPONG, PINGPONG_LOG_LEVEL);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Set log level to %u failed\n", PINGPONG_LOG_LEVEL);
+    
+    nb_lcores = rte_lcore_count();
+    if (nb_lcores < 2)
+        rte_exit(EXIT_FAILURE, "Number of CPU cores should be no less than 2.");
 
     nb_ports = rte_eth_dev_count_avail();
     if (nb_ports == 0)
@@ -576,23 +581,21 @@ int main(int argc, char **argv)
 
     rte_log(RTE_LOG_DEBUG, RTE_LOGTYPE_PINGPONG, "Initilize port %u done.\n", portid);
 
+    lcore_id = rte_get_next_lcore(0, true, false);
+
     ret = 0;
     if (server_mode)
     {
-        rte_eal_mp_remote_launch(pong_launch_one_lcore, NULL, SKIP_MASTER);
+        rte_eal_remote_launch(pong_launch_one_lcore, NULL, lcore_id);
     }
     else
     {
-        rte_eal_mp_remote_launch(ping_launch_one_lcore, NULL, SKIP_MASTER);
+        rte_eal_remote_launch(ping_launch_one_lcore, NULL, lcore_id);
     }
 
-    RTE_LCORE_FOREACH_SLAVE(lcore_id)
+    if (rte_eal_wait_lcore(lcore_id) < 0)
     {
-        if (rte_eal_wait_lcore(lcore_id) < 0)
-        {
-            ret = -1;
-            break;
-        }
+        ret = -1;
     }
 
     rte_eth_dev_stop(portid);
